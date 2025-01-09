@@ -20,6 +20,7 @@
 </div>
 
 ## ✨ Updates
+- [01/09/2025]: We released the evaluation code (including evaluation data). Additionally, we added instructions on how to train your medical multimodal LLM.  
 - [06/28/2024]: We released our medical MLLMs, including [HuatuoGPT-Vision-34B](https://huggingface.co/FreedomIntelligence/HuatuoGPT-Vision-34B) and [HuatuoGPT-Vision-7B](https://huggingface.co/FreedomIntelligence/HuatuoGPT-Vision-7B).
 - [06/26/2024]: We released [PubMedVision](https://huggingface.co/datasets/FreedomIntelligence/PubMedVision), a **1.3M** high-quality medical VQA dataset for injecting medical visual knowledge.
 
@@ -90,6 +91,27 @@ print(output) # Prints the output of the model
 | LLaVA-v1.6-34B            | 61.4            | 48.8                                  |
 | **HuatuoGPT-Vision-7B**        | 74.0            | 50.6                                  |
 | **HuatuoGPT-Vision-34B**      | **76.9**        | **54.4**                               |
+
+## 📏 Evaluation
+1. For evaluation, you need to download the medical evaluation dataset. We have organized multiple evaluation datasets, which can be downloaded directly via the following link:
+
+| Dataset | Link |
+| --- | --- |
+| Medical_Multimodal_Evaluation_Data | [link](https://huggingface.co/datasets/FreedomIntelligence/Medical_Multimodal_Evaluation_Data) |  
+
+We have bundled multiple evaluation datasets together. Simply download the data and extract the `images.zip` file.  
+
+2. Then, you can evaluate using the following command:
+```bash
+accelerate launch eval.py --data_path Medical_Multimodal_Evaluation_Data/medical_multimodel_evaluation_data.json  --model_path HuatuoGPT-Vision-7B
+```  
+
+3. Once executed, you will directly obtain the results of the medical multimodal evaluation, including datasets like `VQA-RAD`, `SLAKE`, `PathVQA`, `PMC-VQA`, `OmniMedVQA`, and `MMMU-Medical-Tracks`.
+
+
+## 🏋 Training
+This project uses LLaVA's code for training, and it is recommended to use LLaVA's code for training. The code is available at [LLaVA](https://github.com/haotian-liu/LLaVA).  
+> To reproduce our results, please train the model using a combination of the PubMedVision dataset and LLaVA's dataset.
 
 ## 🩺 HuatuoGPT Series 
 
