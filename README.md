@@ -6,7 +6,7 @@
   📃 <a href="https://arxiv.org/abs/2406.19280" target="_blank">Paper</a>  • 🖥️ <a href="https://vision.huatuogpt.cn/#/" target="_blank">Demo</a>
 </h5>
 </div>
- 
+
 <div align="center">
 <h4>
   📚 <a href="https://huggingface.co/datasets/FreedomIntelligence/PubMedVision" target="_blank">PubMedVision</a> 
@@ -20,6 +20,7 @@
 </div>
 
 ## ✨ Updates
+- [04/23/2025]: We release the training code based on the Qwen2.5-VL framework.
 - [01/09/2025]: We released the evaluation code (including evaluation data). Additionally, we added instructions on how to train your medical multimodal LLM.  
 - [06/28/2024]: We released our medical MLLMs, including [HuatuoGPT-Vision-34B](https://huggingface.co/FreedomIntelligence/HuatuoGPT-Vision-34B) and [HuatuoGPT-Vision-7B](https://huggingface.co/FreedomIntelligence/HuatuoGPT-Vision-7B).
 - [06/26/2024]: We released [PubMedVision](https://huggingface.co/datasets/FreedomIntelligence/PubMedVision), a **1.3M** high-quality medical VQA dataset for injecting medical visual knowledge.
@@ -104,7 +105,7 @@ We have bundled multiple evaluation datasets together. Simply download the data 
 2. Then, you can evaluate using the following command:
 ```bash
 accelerate launch eval.py --data_path Medical_Multimodal_Evaluation_Data/medical_multimodel_evaluation_data.json  --model_path HuatuoGPT-Vision-7B
-```  
+```
 
 3. Once executed, you will directly obtain the results of the medical multimodal evaluation, including datasets like `VQA-RAD`, `SLAKE`, `PathVQA`, `PMC-VQA`, `OmniMedVQA`, and `MMMU-Medical-Tracks`.
 
@@ -112,6 +113,68 @@ accelerate launch eval.py --data_path Medical_Multimodal_Evaluation_Data/medical
 ## 🏋 Training
 This project uses LLaVA's code for training, and it is recommended to use LLaVA's code for training. The code is available at [LLaVA](https://github.com/haotian-liu/LLaVA).  
 > To reproduce our results, please train the model using a combination of the PubMedVision dataset and LLaVA's dataset.
+
+> **Update (April 23, 2025):**  
+> We release our training process using an updated architecture.  Given that the original LLaVA codebase are relatively outdated, we’ve transitioned to a cleaner and more efficient training framework based on [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL).  
+> The Qwen2.5-VL architecture is more compatible with Huggingface Transformers, making both training and deployment easier, and it offers better support for image processing.  **We strongly recommend using Qwen2.5-VL.** (Note: Use the latest Transformers library for Qwen2.5-VL compatibility.)
+
+- **Step 1: Initialize Qwen2.5-VL with LLMs**
+
+Initialize Qwen2.5-VL with LLMs (Qwen2.5-LLM). This step initializes a Qwen2.5-VL with an LLM so that we can train an MLLM from scratch.
+
+```bash
+python convert_llm_to_vl.py \
+  --vl_model_path Qwen/Qwen2.5-VL-7B-Instruct \
+  --llm_model_path Qwen/Qwen2.5-7B-Instruct \
+  --save_path ./Qwen2.5-VL-7B-Base
+```
+
+- **Step 2: Vision Alignment (Caption Dataset Pretraining)**
+
+```bash
+accelerate launch --config_file ./config/ds.yaml \
+  --num_processes 8 \
+  --num_machines 1 \
+  --machine_rank 0 \
+  --main_process_port 29502 \
+  --deepspeed_multinode_launcher standard train_vl.py \
+  --experiment_name huatuogpt_vision_alignment \
+  --run_name huatuogpt_vision \
+  --model_path ./Qwen2.5-VL-7B-Base \
+  --max_ckpts 1 \
+  --gradient_accumulation_steps 8 \
+  --data_path Vision_Alignment_Data.json \
+  --output_dir ./huatuogpt_vision_alignment_checkpoint \
+  --n_epochs 1 \
+  --warmup_rates 0.05 \
+  --train_bsz_per_gpu 2 \
+  --learning_rate 5e-6 \
+  --gradient_checkpointing
+```
+
+- **Step 3: Vision Instruction Fine-tuning**
+
+```bash
+accelerate launch --config_file ./config/ds.yaml \
+  --num_processes 8 \
+  --num_machines 1 \
+  --machine_rank 0 \
+  --main_process_port 29502 \
+  --deepspeed_multinode_launcher standard train_vl.py \
+  --experiment_name huatuogpt_vision_sft \
+  --run_name huatuogpt_vision \
+  --model_path huatuogpt_vision_alignment_model \
+  --max_ckpts 1 \
+  --gradient_accumulation_steps 8 \
+  --data_path Vision_SFT_Data.json \
+  --n_epochs 1 \
+  --warmup_rates 0.05 \
+  --train_bsz_per_gpu 2 \
+  --learning_rate 5e-6 \
+  --gradient_checkpointing
+```
+
+
 
 ## 🩺 HuatuoGPT Series 
 
