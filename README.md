@@ -115,7 +115,7 @@ This project uses LLaVA's code for training, and it is recommended to use LLaVA'
 > To reproduce our results, please train the model using a combination of the PubMedVision dataset and LLaVA's dataset.
 
 > **Update (April 23, 2025):**  
-> We release our training process using an updated architecture.  Given that the original LLaVA codebase are relatively outdated, we’ve transitioned to a cleaner and more efficient training framework based on [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL).  
+> We release our training process using an newer architecture.  Given that the original LLaVA codebase are relatively outdated, we’ve transitioned to a cleaner and more efficient training framework based on [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL).  
 > The Qwen2.5-VL architecture is more compatible with Huggingface Transformers, making both training and deployment easier, and it offers better support for image processing.  **We strongly recommend using Qwen2.5-VL.** (Note: Use the latest Transformers library for Qwen2.5-VL compatibility.)
 
 - **Step 1: Initialize Qwen2.5-VL with LLMs**
