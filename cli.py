@@ -1,18 +1,23 @@
-import sys
 import os
+import sys
+
 file_path = os.path.abspath(__file__)
 dir_path = os.path.dirname(file_path)
 print(dir_path)
 sys.path.insert(0, dir_path)
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from llava.model import *
-
-from transformers import AutoTokenizer
-from transformers import TextIteratorStreamer
 from threading import Thread
-import torch
 
+import torch
+from llava.constants import (
+    DEFAULT_IM_END_TOKEN,
+    DEFAULT_IM_START_TOKEN,
+    DEFAULT_IMAGE_TOKEN,
+    IMAGE_TOKEN_INDEX,
+)
+from llava.model import *
 from PIL import Image
+from transformers import AutoTokenizer, TextIteratorStreamer
+
 
 class HuatuoChatbot():
     def __init__(self, model_dir, device = 'cuda'):
@@ -214,6 +219,13 @@ class HuatuoChatbot():
             if True or self.data_args.image_aspect_ratio == 'pad':
                 def expand2square(pil_img, background_color):
                     width, height = pil_img.size
+                    # MAX_SIZE = 1024
+                    # if width > MAX_SIZE or height > MAX_SIZE:
+                    #     print(f"Image {fp} is too large, resizing to {MAX_SIZE} from {width}x{height}")
+                    #     ratio = min(MAX_SIZE / width, MAX_SIZE / height)
+                    #     pil_img = pil_img.resize((int(width * ratio), int(height * ratio)), Image.LANCZOS)
+                    #     width, height = pil_img.size
+
                     if width == height:
                         return pil_img
                     elif width > height:
@@ -240,23 +252,24 @@ class HuatuoChatbot():
         '''
         
         # image
-        if images is None:
-            images = []
+        # if images is None:
+        #     images = []
 
-        if isinstance(images,str):
-            images = [images]
+        # if isinstance(images,str):
+        #     images = [images]
 
-        valid_images = []
-        for img in images:
-            try:
-                if isinstance(img, str):
-                    Image.open(img).convert('RGB') # make sure that the path exists
-                valid_images.append(img)
-            except:
-                print(f'{img} This image is wrong.')
-                continue
-        images = valid_images
-        if len(valid_images) > self.max_image_num:
+        # valid_images = []
+        # for img in images:
+        #     try:
+        #         if isinstance(img, str):
+        #             Image.open(img).convert('RGB') # make sure that the path exists
+        #         valid_images.append(img)
+        #     except:
+        #         print(f'{img} This image is wrong.')
+        #         continue
+        # images = valid_images
+        images = [img.convert('RGB') for img in images]
+        if len(images) > self.max_image_num:
             images = images[:self.max_image_num]
 
         # text

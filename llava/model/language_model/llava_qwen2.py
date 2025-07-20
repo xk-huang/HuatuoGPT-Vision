@@ -20,9 +20,14 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, \
-                         Qwen2ForCausalLM, Qwen2Config, Qwen2Model \
-
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Qwen2ForCausalLM,
+    Qwen2Config,
+    Qwen2Model,
+)
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
@@ -57,15 +62,15 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
         # if getattr(config, 'init_vision_encoder_from_ckpt', True):
         if init_vision_encoder_from_ckpt:
             vision_tower = self.get_vision_tower()
-            print(f'loading from CLIP first. This should only be used at inference!!!')
-            vision_tower.load_model() # 
-            
+            print(f"loading from CLIP first. This should only be used at inference!!!")
+            vision_tower.load_model()  #
+
         # Initialize weights and apply final processing
         self.post_init()
 
     def get_model(self):
         return self.model
-    
+
     def get_tokenizer(self):
         return self.tokenizer
 
@@ -82,6 +87,7 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         images: Optional[torch.FloatTensor] = None,
         return_dict: Optional[bool] = None,
+        cache_position=None,  # NOTE(xk): to be compatible w/ transformers 4.51.1
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
         if inputs_embeds is None:
@@ -91,15 +97,10 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
                 attention_mask,
                 past_key_values,
                 inputs_embeds,
-                labels
-            # ) = self.prepare_inputs_labels_for_multimodal(
-            ) = self.prepare_inputs_labels_for_multimodal_new(
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
                 labels,
-                images
+                # ) = self.prepare_inputs_labels_for_multimodal(
+            ) = self.prepare_inputs_labels_for_multimodal_new(
+                input_ids, position_ids, attention_mask, past_key_values, labels, images
             )
 
         return super().forward(
@@ -112,7 +113,7 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict
+            return_dict=return_dict,
         )
 
     @torch.no_grad()
@@ -121,27 +122,17 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
         inputs: Optional[torch.Tensor] = None,
         images: Optional[torch.Tensor] = None,
         **kwargs,
-    ) :
+    ):
         position_ids = kwargs.pop("position_ids", None)
         attention_mask = kwargs.pop("attention_mask", None)
         if "inputs_embeds" in kwargs:
             raise NotImplementedError("`inputs_embeds` is not supported")
 
         if images is not None:
-            (
-                inputs,
-                position_ids,
-                attention_mask,
-                _,
-                inputs_embeds,
-                _
-            ) = self.prepare_inputs_labels_for_multimodal_new(
-                inputs,
-                position_ids,
-                attention_mask,
-                None,
-                None,
-                images
+            (inputs, position_ids, attention_mask, _, inputs_embeds, _) = (
+                self.prepare_inputs_labels_for_multimodal_new(
+                    inputs, position_ids, attention_mask, None, None, images
+                )
             )
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
@@ -151,17 +142,23 @@ class LlavaQwen2ForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
             position_ids=None,
             attention_mask=None,
             inputs_embeds=inputs_embeds,
-            **kwargs
+            **kwargs,
         )
 
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs
+    ):
         images = kwargs.pop("images", None)
         _inputs = super().prepare_inputs_for_generation(
-            input_ids, past_key_values=past_key_values, inputs_embeds=inputs_embeds, **kwargs
+            input_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            **kwargs,
         )
         if images is not None:
-            _inputs['images'] = images
+            _inputs["images"] = images
         return _inputs
+
 
 # AutoConfig.register("llava", LlavaQwenConfig)
 AutoConfig.register("llava_qwen2", LlavaQwenConfig)
