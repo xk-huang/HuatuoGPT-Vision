@@ -243,6 +243,7 @@ def score_mix_llava(datas, iswandb=False):
         res["InputOutputTable"] = table
     return res
 
+
 @click.command()
 @click.argument("input_file", type=click.Path(exists=True))
 def main(input_file):
@@ -255,6 +256,7 @@ def main(input_file):
     print("Results:")
     for key, value in results.items():
         print(f"{key}: {value}")
+
 
 if __name__ == "__main__":
     main()

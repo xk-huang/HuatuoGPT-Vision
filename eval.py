@@ -28,6 +28,8 @@ from transformers import (
 )
 from transformers.generation.logits_process import LogitsProcessor
 from transformers.generation.utils import LogitsProcessorList
+import numpy as np
+import random
 
 os.umask(0)
 
@@ -37,11 +39,7 @@ logging.basicConfig(level="INFO")
 
 
 class TestDataset(torch.utils.data.Dataset):
-    QUERY_PROMPT = (
-        # "{}\n{}\nAnswer with the option's letter from the given choices directly."
-        "You will solve a problem/request. You should provide your thoughts within <think> </think> tags before providing the answer.\nWrite your final answer within <answer> </answer> tags.\n{}\n{}"
-    )
-
+    QUERY_PROMPT = None
     def __init__(self, config):
         self.config = config
         max_dataset_size = config.max_dataset_size
@@ -50,53 +48,67 @@ class TestDataset(torch.utils.data.Dataset):
         if max_dataset_size is not None:
             print(f"max_dataset_size: {max_dataset_size}")
             self.dataset = self.dataset.select(range(max_dataset_size))
-
-    def mmmu_prompt(self, da):
-        self.query_prompt = "Please answer the multiple-choice questions below.\n{}\n{}"
-        opt_title = ["A", "B", "C", "D", "E", "F", "G"]
-        if isinstance(da["options"], str):
-            da["options"] = ast.literal_eval(da["options"])
-        option_str = "\n".join(
-            f"{opt}. {ops}" for opt, ops in zip(opt_title, da["options"])
-        )
-        return self.query_prompt.format(da["question"], option_str)
-
-    def OmniMedVQA_prompt(self, entity):
-        q_str = (
-            entity["question"]
-            + f'Here are {len(entity["options"])} candidate answers:'
-            + str(entity["options"])
-            + " Only return what you think is the correct answer from the candidate answers, do not return any other irrelevant text!"
-        )
-        return q_str
-
-    def llava_prompt(self, da):
-        self.query_prompt = (
-            "{}\n{}\nAnswer with the option's letter from the given choices directly."
-        )
-        opt_title = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
-        if isinstance(da["options"], str):
-            da["options"] = ast.literal_eval(da["options"])
-        option_str = "\n".join(
-            f"{opt}. {ops}" for opt, ops in zip(opt_title, da["options"])
-        )
-        return self.query_prompt.format(da["question"], option_str)
+        
+        if config.use_cot:
+            self.QUERY_PROMPT = "You will solve a problem/request. You should provide your thoughts within <think> </think> tags before providing the answer.\nWrite your final answer within <answer> </answer> tags.\n{}\n{}"
+            print(f"Using chain of thought (CoT) prompt: {self.QUERY_PROMPT}")
+        else:
+            self.QUERY_PROMPT = "Answer with the option's letter from the given choices directly.\n{}\n{}"
+            print(f"Using direct answer prompt: {self.QUERY_PROMPT}")
 
     def med_vlrm_prompt(self, row):
         options = row["options"]
         options = json.loads(options)
+        answer_label = row["answer_label"]
+        answer = row["answer"]
+
+        # randomly shuffle options
+        new_options, new_answer_label = self.shuffle_question(
+            options, answer_label, answer
+        )
+        new_answer = new_options[new_answer_label]
+        if new_answer != answer:
+            raise ValueError(
+                f"Shuffled answer '{new_answer}' does not match original answer '{answer}'."
+            )
         question = row["question"]
 
-        option_str = "\n".join(f"{opt}. {ops}" for opt, ops in options.items())
-        return self.QUERY_PROMPT.format(question, option_str)
+        option_str = "\n".join(f"{opt}. {ops}" for opt, ops in new_options.items())
+        return {
+            "data": {
+                "question": question,
+                "options": new_options,
+                "answer_label": new_answer_label,
+                "answer": new_answer,
+                "dataset_index": row["dataset_index"],
+                "dataset_name": row["dataset_name"],
+            },
+            "query": self.QUERY_PROMPT.format(question, option_str),
+            "images": row["images"],
+        }
+
+    def shuffle_question(self, options, answer_label, answer):
+        """Return a copy of `question_data` with its options shuffled and labels reassigned."""
+        # check
+        if options[answer_label] != answer:
+            raise ValueError(
+                f"Answer label '{answer_label}' does not match the answer '{answer}' in options."
+            )
+
+        items = list(options.items())                    # convert to list of (label, text)
+        random.shuffle(items)                            # shuffle in-place
+
+        new_labels = sorted([lbl for lbl, _ in items])          # extract shuffled labels
+        shuffled = {lbl: text for lbl, (_, text) in zip(new_labels, items)}
+
+        # find which new label corresponds to the original correct answer value
+        new_answer_label = next(lbl for lbl, text in shuffled.items() if text == answer)
+
+        return shuffled, new_answer_label
 
     def __getitem__(self, index):
         da = self.dataset[index]
-        query = self.med_vlrm_prompt(da)
-        # List of PIL.Image
-        image = da["images"]
-
-        return {"data": da, "query": query, "image": image}
+        return self.med_vlrm_prompt(da)
 
     def __len__(self):
         return len(self.dataset)
@@ -105,7 +117,7 @@ class TestDataset(torch.utils.data.Dataset):
         out_batch = {}
         out_batch["query"] = [x["query"] for x in batch]
         out_batch["data"] = [x["data"] for x in batch]
-        out_batch["image"] = [x["image"] for x in batch]
+        out_batch["images"] = [x["images"] for x in batch]
         return out_batch
 
 
@@ -165,18 +177,16 @@ def test(args):
         )
 
         for batch in dataloader_iterator:
-            for da, query, image in zip(batch["data"], batch["query"], batch["image"]):
+            for da, query, images in zip(batch["data"], batch["query"], batch["images"]):
                 response = bot.inference(
                     query,
-                    image,
+                    images,
                 )
                 da["model_output"] = response[0]
-                da.pop("images")
                 cache_data.append(da)
 
         torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
-        breakpoint()
 
         if dist.is_initialized():
             all_data = [None] * dist.get_world_size()
@@ -223,15 +233,18 @@ if __name__ == "__main__":
         "--data_path", default="medical_multimodel_evaluation_data.json", type=str
     )
     parser.add_argument("--model_path", default="HuatuoGPT-Vision-7B", type=str)
-    parser.add_argument("--max_new_tokens", default=256, type=int)
+    parser.add_argument("--max_new_tokens", default=4096, type=int)
     parser.add_argument("--batch_size", default=2, type=int)
     parser.add_argument("--max_dataset_size", default=None, type=int)
     parser.add_argument("--output_dir", default="./outputs/huatuo_vision", type=str)
+    parser.add_argument("--use_cot", action="store_true", help="Use chain of thought")
 
     # Other Args
     parser.add_argument("--seed", default=42, type=int)
 
     args = parser.parse_args()
 
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     set_seed(args.seed)
     test(args)

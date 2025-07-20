@@ -1,3 +1,28 @@
+## Eval Huatuo Vision w/ original implementation
+
+```bash
+mkdir -p third_party
+git clone git@github.com:xk-huang/HuatuoGPT-Vision.git third_party/HuatuoGPT-Vision
+
+cd third_party/HuatuoGPT-Vision
+mkdir misc outputs
+# must use the same name, model is hard-coded as the input dir name
+huggingface-cli download FreedomIntelligence/HuatuoGPT-Vision-7B --local-dir misc/HuatuoGPT-Vision-7B
+huggingface-cli download FreedomIntelligence/HuatuoGPT-Vision-34B --local-dir misc/HuatuoGPT-Vision-34B
+huggingface-cli download FreedomIntelligence/Medical_Multimodal_Evaluation_Data --repo-type dataset --local-dir misc/eval_data
+
+# debug
+accelerate launch --num_processes 1 eval.py --model_path misc/HuatuoGPT-Vision-7B --max_dataset_size 10
+accelerate launch --num_processes 2 eval.py --model_path misc/HuatuoGPT-Vision-7B --max_dataset_size 10
+
+# run
+accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-7B --output_dir outputs/direct
+accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-34B --output_dir outputs/direct
+
+accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-7B --output_dir outputs/cot --use_cot
+accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-34B --output_dir outputs/cot --use_cot
+```
+
 # HuatuoGPT-Vision, Towards Injecting Medical Visual Knowledge into Multimodal LLMs at Scale
 
 
