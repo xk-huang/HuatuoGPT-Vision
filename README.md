@@ -21,6 +21,10 @@ accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-3
 
 accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-7B --output_dir outputs/cot --use_cot
 accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-34B --output_dir outputs/cot --use_cot
+
+
+python regrade_cot.py outputs/cot/HuatuoGPT-Vision-7B_medical_multimodel_evaluation_data.json
+python regrade_cot.py outputs/cot/HuatuoGPT-Vision-34B_medical_multimodel_evaluation_data.json
 ```
 
 # HuatuoGPT-Vision, Towards Injecting Medical Visual Knowledge into Multimodal LLMs at Scale
