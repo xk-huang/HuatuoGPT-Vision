@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import datasets
+import numpy as np
 import torch
 import torch.distributed as dist
 from accelerate import Accelerator, DeepSpeedPlugin
@@ -28,8 +29,6 @@ from transformers import (
 )
 from transformers.generation.logits_process import LogitsProcessor
 from transformers.generation.utils import LogitsProcessorList
-import numpy as np
-import random
 
 os.umask(0)
 
@@ -40,6 +39,7 @@ logging.basicConfig(level="INFO")
 
 class TestDataset(torch.utils.data.Dataset):
     QUERY_PROMPT = None
+
     def __init__(self, config):
         self.config = config
         max_dataset_size = config.max_dataset_size
@@ -48,9 +48,9 @@ class TestDataset(torch.utils.data.Dataset):
         if max_dataset_size is not None:
             print(f"max_dataset_size: {max_dataset_size}")
             self.dataset = self.dataset.select(range(max_dataset_size))
-        
+
         if config.use_cot:
-            self.QUERY_PROMPT = "You will solve a problem/request. You should provide your thoughts within <think> </think> tags before providing the answer.\nWrite your final answer within <answer> </answer> tags.\n{}\n{}"
+            self.QUERY_PROMPT = 'You will solve a problem/request. First think step by step, and then answer with the option letter from the given choices directly after "Answer: ".\n\nQuestions:{}\n\nOptions:{}'
             print(f"Using chain of thought (CoT) prompt: {self.QUERY_PROMPT}")
         else:
             self.QUERY_PROMPT = "Answer with the option's letter from the given choices directly.\n{}\n{}"
@@ -95,10 +95,10 @@ class TestDataset(torch.utils.data.Dataset):
                 f"Answer label '{answer_label}' does not match the answer '{answer}' in options."
             )
 
-        items = list(options.items())                    # convert to list of (label, text)
-        random.shuffle(items)                            # shuffle in-place
+        items = list(options.items())  # convert to list of (label, text)
+        random.shuffle(items)  # shuffle in-place
 
-        new_labels = sorted([lbl for lbl, _ in items])          # extract shuffled labels
+        new_labels = sorted([lbl for lbl, _ in items])  # extract shuffled labels
         shuffled = {lbl: text for lbl, (_, text) in zip(new_labels, items)}
 
         # find which new label corresponds to the original correct answer value
@@ -145,6 +145,7 @@ def table_to_csv_string(table):
 
 def test(args):
     accelerator = Accelerator()
+
     torch.cuda.set_device(accelerator.process_index)
     accelerator.print(f"args:\n{args}")
 
@@ -168,8 +169,6 @@ def test(args):
     cache_data = []
 
     with torch.no_grad():
-        ress = []
-
         dataloader_iterator = (
             tqdm(val_dataloader, total=len(val_dataloader))
             if accelerator.is_main_process
@@ -177,7 +176,9 @@ def test(args):
         )
 
         for batch in dataloader_iterator:
-            for da, query, images in zip(batch["data"], batch["query"], batch["images"]):
+            for da, query, images in zip(
+                batch["data"], batch["query"], batch["images"]
+            ):
                 response = bot.inference(
                     query,
                     images,
@@ -188,41 +189,38 @@ def test(args):
         torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
 
-        if dist.is_initialized():
-            all_data = [None] * dist.get_world_size()
-            all_response = [None] * dist.get_world_size()
-
-            dist.all_gather_object(all_data, cache_data)
-
-            all_data = [item for sublist in all_data for item in sublist]
-        else:
-            all_data = cache_data
-
-        for d in all_data:
-            ress.append(d)
-
         output_dir = args.output_dir
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        if accelerator.is_main_process:
-            task_name = (
-                os.path.basename(args.model_path)
-                + f'_{os.path.split(args.data_path)[-1].replace(".json","")}'
-            )
 
-            out_file = output_dir / f"{task_name}.json"
-            with open(out_file, "w") as fw:
-                json.dump(ress, fw, ensure_ascii=False, indent=2)
-            print(f"test results: {out_file}")
-            print(f"question num: {len(ress)}")
-            val_res = score_mix_llava(ress)
-            outstr = json.dumps(val_res, ensure_ascii=False, indent=2)
-            accelerator.print(outstr)
-            out_result_file = output_dir / f"{task_name}_result.json"
-            with open(out_result_file, "w") as fw:
-                json.dump(val_res, fw, ensure_ascii=False, indent=2)
+        if dist.is_initialized():
+            rank_id = dist.get_rank()
         else:
-            print("Not main process, skip saving results.")
+            rank_id = 0
+
+        output_shard_dir = output_dir / "shards"
+        output_shard_dir.mkdir(parents=True, exist_ok=True)
+        output_shard_path = output_shard_dir / f"shard_{rank_id}.json"
+        with open(output_shard_path, "w") as fw:
+            json.dump(cache_data, fw, ensure_ascii=False, indent=2)
+        print(f"shard results: {output_shard_path}")
+
+        # barrier
+        dist.barrier()
+
+        if accelerator.is_main_process:
+            # merge all shards
+            all_data = []
+            for shard_file in output_shard_dir.glob("shard_*.json"):
+                with open(shard_file, "r") as fr:
+                    shard_data = json.load(fr)
+                    all_data.extend(shard_data)
+            output_path = output_dir / "eval.json"
+            with open(output_path, "w") as fw:
+                json.dump(all_data, fw, ensure_ascii=False, indent=2)
+            print(f"merged results: {output_path}")
+
+        dist.barrier()
 
 
 if __name__ == "__main__":
