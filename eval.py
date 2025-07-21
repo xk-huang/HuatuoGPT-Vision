@@ -187,7 +187,6 @@ def test(args):
                 cache_data.append(da)
 
         torch.cuda.empty_cache()
-        accelerator.wait_for_everyone()
 
         output_dir = args.output_dir
         output_dir = Path(output_dir)
@@ -204,6 +203,10 @@ def test(args):
         with open(output_shard_path, "w") as fw:
             json.dump(cache_data, fw, ensure_ascii=False, indent=2)
         print(f"shard results: {output_shard_path}")
+
+        if args.no_merge_json:
+            print("Skipping merging JSON files as per --no_merge_json flag.")
+            return
 
         # barrier
         dist.barrier()
@@ -239,6 +242,9 @@ if __name__ == "__main__":
 
     # Other Args
     parser.add_argument("--seed", default=42, type=int)
+    parser.add_argument(
+        "--no_merge_json", action="store_true", help="Do not merge json files"
+    )
 
     args = parser.parse_args()
 

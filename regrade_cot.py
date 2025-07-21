@@ -1,13 +1,15 @@
 """
 python regrade_cot.py outputs/cot/HuatuoGPT-Vision-7B_medical_multimodel_evaluation_data.json
 """
-import click
-from pathlib import Path
-import json
-import tqdm
-import re
 import collections
+import json
+import re
+from pathlib import Path
+
+import click
 import pandas as pd
+import tqdm
+
 
 @click.command()
 @click.argument('input_file', type=click.Path(exists=True))
@@ -30,7 +32,7 @@ def main(input_file):
         num_correct = outputs["num_correct"]
         num_correct_dict[dataset_name].append(num_correct)
     avg_correct_dict = {
-        dataset_name: sum(num_corrects) / len(num_corrects)
+        dataset_name: sum(num_corrects) / len(num_corrects) * 100
         for dataset_name, num_corrects in num_correct_dict.items()
     }
     with open(output_file, 'w') as file:

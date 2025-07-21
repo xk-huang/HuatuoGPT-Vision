@@ -19,7 +19,8 @@ accelerate launch --num_processes 2 eval.py --model_path misc/HuatuoGPT-Vision-7
 
 
 accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-7B --output_dir outputs/cot/huatuo_vision_7b --use_cot
-accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-34B --output_dir outputs/cot/huatuo_vision_34b --use_cot
+accelerate launch --num_processes 8 eval.py --model_path misc/HuatuoGPT-Vision-34B --output_dir outputs/cot/huatuo_vision_34b --use_cot --no_merge_json
+python merge_json.py outputs/cot/huatuo_vision_34b
 
 python regrade_cot.py outputs/cot/huatuo_vision_7b/eval.json
 python regrade_cot.py outputs/cot/huatuo_vision_34b/eval.json
